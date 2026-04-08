@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Traffic Dashboard{% endblock %}
+{% block content %}
+<section class="hero-grid">
+  <article
+    class="hero-panel map-panel"
+    {% if roads.activeRoad.kind == 'image' %}
+    style="background-image: linear-gradient(rgba(3, 9, 17, 0.22), rgba(3, 9, 17, 0.22)), url('{{ roads.activeRoad.source }}');"
+    {% endif %}
+  >
+    {% if roads.activeRoad.kind == 'video' %}
+    <video class="road-video" autoplay muted loop playsinline>
+      <source src="{{ roads.activeRoad.source }}" type="video/mp4">
+    </video>
+    {% endif %}
+
+    <div class="hero-copy">
+      <p class="pill">Live road view</p>
+      <h2>Traffic counts by path</h2>
+      <p>Track how many vehicles are moving through each road and highlight the busiest direction in real time.</p>
+      <div class="road-switcher">
+        {% for road in roads.options %}
+        <a class="road-chip {% if road.active %}active{% endif %}" href="{{ url_for('dashboard', road=road.key) }}">{{ road.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="vehicleLayer" class="vehicle-layer" aria-label="Animated traffic layer"></div>
+    <div class="signal signal-north" data-dir="north">
+      <span class="light red"></span>
+      <span class="light yellow"></span>
+      <span class="light green"></span>
+      <em class="timer" id="timer-north">12</em>
+    </div>
+    <div class="signal signal-east" data-dir="east">
+      <span class="light red"></span>
+      <span class="light yellow"></span>
+      <span class="light green"></span>
+      <em class="timer" id="timer-east">12</em>
+    </div>
+    <div class="signal signal-south" data-dir="south">
+      <span class="light red"></span>
+      <span class="light yellow"></span>
+      <span class="light green"></span>
+      <em class="timer" id="timer-south">12</em>
+    </div>
+    <div class="signal signal-west" data-dir="west">
+      <span class="light red"></span>
+      <span class="light yellow"></span>
+      <span class="light green"></span>
+      <em class="timer" id="timer-west">12</em>
+    </div>
+    <div class="busiest-banner">
+      <span>Busy path</span>
+      <strong id="busiestRoute">{{ snapshot.busiest.route }}</strong>
+      <em id="busiestCount">{{ snapshot.busiest.count }} vehicles</em>
+    </div>
+  </article>
+
+  <aside class="hero-panel stats-panel">
+    <div class="stats-header">
+      <div>
+        <p class="pill muted">Traffic snapshot</p>
+        <h3>Total vehicles: <span id="totalVehicles">{{ snapshot.total }}</span></h3>
+      </div>
+      <a class="button-link" href="{{ url_for('graphs') }}">Open graphs</a>
+    </div>
+    <div class="stats-grid">
+      {% for route, count in snapshot.counts.items() %}
+      <article class="stat-card {% if route == snapshot.busiest.route %}active{% endif %}" data-route="{{ route }}">
+        <span>{{ route }}</span>
+        <strong class="route-count">{{ count }}</strong>
+        <div class="meter"><i class="meter-fill" style="width: {{ (count / snapshot.total * 100) | round(0) }}%"></i></div>
+      </article>
+      {% endfor %}
+    </div>
+  </aside>
+</section>
+
+<section class="insight-grid">
+  <article class="insight-card">
+    <h3>More vehicles path</h3>
+    <p>The busiest path is <strong id="insightBusiestRoute">{{ snapshot.busiest.route }}</strong> with <strong id="insightBusiestCount">{{ snapshot.busiest.count }}</strong> vehicles.</p>
+  </article>
+  <article class="insight-card">
+    <h3>What this page shows</h3>
+    <p>A road-style dashboard based on the simulation assets, with path totals and a quick view of the busiest direction.</p>
+  </article>
+</section>
+
+<script>
+  window.__ROAD_DATA__ = {{ roads | tojson }};
+  window.__TRAFFIC_SNAPSHOT__ = {{ snapshot | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

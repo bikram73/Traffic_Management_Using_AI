@@ -1,0 +1,5 @@
+Flask>=3.0.0
+pygame>=2.1.2
+neat-python>=0.92
+matplotlib>=3.5.1
+Frozen-Flask>=1.0.2

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Traffic Graphs{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+{% block content %}
+<section class="graphs-hero">
+  <div>
+    <p class="pill">Analytics page</p>
+    <h2>Vehicle count graphs</h2>
+    <p>Compare traffic volume by path and see the static-versus-dynamic result data from the project CSV.</p>
+  </div>
+  <a class="button-link" href="{{ url_for('dashboard') }}">Back to dashboard</a>
+</section>
+
+<section class="graph-grid">
+  <article class="chart-card">
+    <h3>Vehicles by path</h3>
+    <canvas id="pathChart"></canvas>
+  </article>
+  <article class="chart-card">
+    <h3>Static vs Dynamic system</h3>
+    <canvas id="comparisonChart"></canvas>
+  </article>
+</section>
+
+<script>
+  window.__TRAFFIC__ = {{ snapshot | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/graphs.js') }}"></script>
+{% endblock %}
