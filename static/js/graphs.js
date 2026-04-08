@@ -1,18 +1,56 @@
 const snapshot = window.__TRAFFIC__ || {};
-const counts = snapshot.counts || {};
+const initialCounts = snapshot.counts || {};
 const comparison = snapshot.comparison || { labels: [], static: [], dynamic: [] };
 
 const pathCtx = document.getElementById('pathChart');
 const comparisonCtx = document.getElementById('comparisonChart');
+const liveStatus = document.getElementById('liveGraphStatus');
+
+let pathChart = null;
+
+function readLiveCounts() {
+  try {
+    const raw = window.localStorage.getItem('traffic-live-counts');
+    if (!raw) return { counts: initialCounts, updatedAt: null };
+    const parsed = JSON.parse(raw);
+    return {
+      counts: parsed.counts || initialCounts,
+      total: parsed.total,
+      busiestRoute: parsed.busiestRoute,
+      busiestCount: parsed.busiestCount,
+      updatedAt: parsed.updatedAt || null,
+    };
+  } catch (error) {
+    void error;
+    return { counts: initialCounts, updatedAt: null };
+  }
+}
+
+function updateLiveLabel(payload) {
+  if (!liveStatus) return;
+  if (!payload.updatedAt) {
+    liveStatus.textContent = 'Using initial snapshot data';
+    return;
+  }
+
+  const time = new Date(payload.updatedAt);
+  liveStatus.textContent = `Live counts updated ${time.toLocaleTimeString()}`;
+}
+
+function getChartData() {
+  const live = readLiveCounts();
+  updateLiveLabel(live);
+  return live.counts;
+}
 
 if (pathCtx) {
-  new Chart(pathCtx, {
+  pathChart = new Chart(pathCtx, {
     type: 'bar',
     data: {
-      labels: Object.keys(counts),
+      labels: Object.keys(initialCounts),
       datasets: [{
         label: 'Vehicles',
-        data: Object.values(counts),
+        data: Object.values(initialCounts),
         backgroundColor: ['#72d572', '#d7b42c', '#ff6f61', '#4fb8ff'],
         borderRadius: 10,
       }],
@@ -84,3 +122,17 @@ if (comparisonCtx) {
     },
   });
 }
+
+function refreshPathChart() {
+  if (!pathChart) return;
+  const counts = getChartData();
+  const labels = Object.keys(counts);
+  const values = Object.values(counts);
+
+  pathChart.data.labels = labels;
+  pathChart.data.datasets[0].data = values;
+  pathChart.update('none');
+}
+
+refreshPathChart();
+window.setInterval(refreshPathChart, 1000);

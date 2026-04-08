@@ -200,6 +200,21 @@ function renderTrafficSnapshot() {
   if (busiestCountNode) busiestCountNode.textContent = `${busiestCount} vehicles`;
   if (insightRouteNode) insightRouteNode.textContent = busiestRoute;
   if (insightCountNode) insightCountNode.textContent = String(busiestCount);
+
+  try {
+    window.localStorage.setItem(
+      "traffic-live-counts",
+      JSON.stringify({
+        counts: flowCounts,
+        total,
+        busiestRoute,
+        busiestCount,
+        updatedAt: Date.now(),
+      }),
+    );
+  } catch (error) {
+    void error;
+  }
 }
 
 if (layer && Array.isArray(roadData.vehicleSprites)) {
