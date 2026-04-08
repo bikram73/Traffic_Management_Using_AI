@@ -23,8 +23,27 @@ const signalTimers = {
   west: document.getElementById("timer-west"),
 };
 
-let phase = 0;
-let countdown = 12;
+const directionOrder = ["north", "east", "south", "west"];
+
+const controllerConfig = {
+  greenMin: Number(roadData?.controller?.greenMin || 6),
+  greenMax: Number(roadData?.controller?.greenMax || 18),
+  yellow: Number(roadData?.controller?.yellow || 3),
+};
+
+const controllerState = {
+  activeDirection: "north",
+  lastDirection: "west",
+  mode: "green",
+  countdown: Number(roadData?.controller?.greenMin || 6),
+};
+
+let latestWaiting = {
+  north: 0,
+  east: 0,
+  south: 0,
+  west: 0,
+};
 
 function setSignalState(direction, state) {
   const node = signals[direction];
@@ -33,62 +52,103 @@ function setSignalState(direction, state) {
   node.classList.add(`state-${state}`);
 }
 
-function applyPhaseStates() {
-  if (phase === 0) {
-    setSignalState("north", "green");
-    setSignalState("south", "green");
-    setSignalState("east", "red");
-    setSignalState("west", "red");
-  } else if (phase === 1) {
-    setSignalState("north", "yellow");
-    setSignalState("south", "yellow");
-    setSignalState("east", "red");
-    setSignalState("west", "red");
-  } else if (phase === 2) {
-    setSignalState("north", "red");
-    setSignalState("south", "red");
-    setSignalState("east", "green");
-    setSignalState("west", "green");
+function laneDirection(laneClass) {
+  if (laneClass === "lane-west-east") return "west";
+  if (laneClass === "lane-east-west") return "east";
+  if (laneClass === "lane-north-south") return "north";
+  return "south";
+}
+
+function chooseNextDirection(waiting) {
+  let maxQueue = -1;
+  let candidates = [];
+
+  for (const direction of directionOrder) {
+    const queue = Number(waiting[direction] || 0);
+    if (queue > maxQueue) {
+      maxQueue = queue;
+      candidates = [direction];
+    } else if (queue === maxQueue) {
+      candidates.push(direction);
+    }
+  }
+
+  if (maxQueue <= 0) {
+    const currentIndex = directionOrder.indexOf(controllerState.lastDirection);
+    return directionOrder[(currentIndex + 1) % directionOrder.length];
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const startIdx = directionOrder.indexOf(controllerState.lastDirection);
+  for (let i = 1; i <= directionOrder.length; i += 1) {
+    const candidate = directionOrder[(startIdx + i) % directionOrder.length];
+    if (candidates.includes(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0];
+}
+
+function computeGreenTime(direction, waiting) {
+  const queue = Number(waiting[direction] || 0);
+  const dynamic = controllerConfig.greenMin + queue;
+  return Math.max(controllerConfig.greenMin, Math.min(controllerConfig.greenMax, dynamic));
+}
+
+function applySignalStates() {
+  for (const direction of directionOrder) {
+    setSignalState(direction, "red");
+  }
+
+  if (controllerState.mode === "green") {
+    setSignalState(controllerState.activeDirection, "green");
   } else {
-    setSignalState("north", "red");
-    setSignalState("south", "red");
-    setSignalState("east", "yellow");
-    setSignalState("west", "yellow");
+    setSignalState(controllerState.activeDirection, "yellow");
   }
 }
 
-function updateTimers() {
+function updateSignalTimers() {
   Object.entries(signalTimers).forEach(([direction, node]) => {
     if (!node) return;
-    const active = (phase < 2 && (direction === "north" || direction === "south")) || (phase >= 2 && (direction === "east" || direction === "west"));
-    node.textContent = String(countdown);
-    node.style.opacity = active ? "1" : "0.45";
+    if (direction === controllerState.activeDirection) {
+      node.textContent = String(controllerState.countdown);
+      node.style.opacity = "1";
+      return;
+    }
+
+    node.textContent = String(Number(latestWaiting[direction] || 0));
+    node.style.opacity = "0.55";
   });
 }
 
-function advancePhase() {
-  if (phase === 0) {
-    phase = 1;
-    countdown = 3;
-  } else if (phase === 1) {
-    phase = 2;
-    countdown = 12;
-  } else if (phase === 2) {
-    phase = 3;
-    countdown = 3;
-  } else {
-    phase = 0;
-    countdown = 12;
+function tickController() {
+  controllerState.countdown -= 1;
+
+  if (controllerState.countdown >= 0) {
+    updateSignalTimers();
+    return;
   }
-  applyPhaseStates();
-  updateTimers();
+
+  if (controllerState.mode === "green") {
+    controllerState.mode = "yellow";
+    controllerState.countdown = controllerConfig.yellow;
+  } else {
+    controllerState.lastDirection = controllerState.activeDirection;
+    controllerState.activeDirection = chooseNextDirection(latestWaiting);
+    controllerState.mode = "green";
+    controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
+  }
+
+  applySignalStates();
+  updateSignalTimers();
 }
 
 function isLaneGreen(laneClass) {
-  if (laneClass === "lane-west-east" || laneClass === "lane-east-west") {
-    return phase >= 2;
-  }
-  return phase < 2;
+  return controllerState.mode === "green" && laneDirection(laneClass) === controllerState.activeDirection;
 }
 
 function routeFromLane(laneClass) {
@@ -215,6 +275,29 @@ if (layer && Array.isArray(roadData.vehicleSprites)) {
     vehicle.y = cfg.y;
     vehicle.crossedStopLine = false;
     vehicle.flowCounted = false;
+  }
+
+  function computeWaitingCounts(width, height) {
+    const waiting = { north: 0, east: 0, south: 0, west: 0 };
+
+    for (const vehicle of vehicles) {
+      if (vehicle.crossedStopLine) continue;
+      const cfg = laneConfig(vehicle.laneClass, width, height, vehicle.size);
+      const dir = laneDirection(vehicle.laneClass);
+
+      let distanceToStopLine;
+      if (cfg.speedAxis === "x") {
+        distanceToStopLine = (cfg.stopLine - vehicle.x) * cfg.speedSign;
+      } else {
+        distanceToStopLine = (cfg.stopLine - vehicle.y) * cfg.speedSign;
+      }
+
+      if (distanceToStopLine >= -2) {
+        waiting[dir] += 1;
+      }
+    }
+
+    return waiting;
   }
 
   function getDistanceToVehicleAhead(vehicle, cfg) {
@@ -364,6 +447,8 @@ if (layer && Array.isArray(roadData.vehicleSprites)) {
       updateVehicle(vehicle, deltaSeconds, width, height);
     }
 
+    latestWaiting = computeWaitingCounts(width, height);
+
     window.requestAnimationFrame(animate);
   }
 
@@ -377,15 +462,12 @@ window.setInterval(() => {
 }, 1000);
 
 if (signals.north && signals.east && signals.south && signals.west) {
-  applyPhaseStates();
-  updateTimers();
+  controllerState.activeDirection = chooseNextDirection(latestWaiting);
+  controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
+  applySignalStates();
+  updateSignalTimers();
 
   window.setInterval(() => {
-    countdown -= 1;
-    if (countdown < 0) {
-      advancePhase();
-      return;
-    }
-    updateTimers();
+    tickController();
   }, 1000);
 }

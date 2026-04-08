@@ -22,6 +22,13 @@ TRAFFIC_COUNTS = {
 }
 
 
+TRAFFIC_CONTROLLER = {
+    "greenMin": 6,
+    "greenMax": 18,
+    "yellow": 3,
+}
+
+
 ROAD_OPTIONS = {
     "city-grid": {
         "label": "City Grid",
@@ -128,6 +135,7 @@ def road_payload(selected_key: str) -> dict[str, object]:
         "activeRoad": active_road,
         "options": options,
         "vehicleSprites": vehicle_sprites,
+        "controller": TRAFFIC_CONTROLLER,
     }
 
 
