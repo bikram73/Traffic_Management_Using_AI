@@ -8,6 +8,46 @@ const liveStatus = document.getElementById('liveGraphStatus');
 
 let pathChart = null;
 
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function computeTotals(counts) {
+  const entries = Object.entries(counts || {});
+  const total = entries.reduce((sum, [, value]) => sum + Number(value || 0), 0);
+  let busiestRoute = 'North';
+  let busiestCount = -1;
+
+  entries.forEach(([route, value]) => {
+    const numeric = Number(value || 0);
+    if (numeric > busiestCount) {
+      busiestCount = numeric;
+      busiestRoute = route;
+    }
+  });
+
+  return { total, busiestRoute, busiestCount };
+}
+
+function writeLiveCounts(counts) {
+  const totals = computeTotals(counts);
+  const payload = {
+    counts,
+    total: totals.total,
+    busiestRoute: totals.busiestRoute,
+    busiestCount: totals.busiestCount,
+    updatedAt: Date.now(),
+  };
+
+  try {
+    window.localStorage.setItem('traffic-live-counts', JSON.stringify(payload));
+  } catch (error) {
+    void error;
+  }
+
+  return payload;
+}
+
 function readLiveCounts() {
   try {
     const raw = window.localStorage.getItem('traffic-live-counts');
@@ -34,13 +74,32 @@ function updateLiveLabel(payload) {
   }
 
   const time = new Date(payload.updatedAt);
-  liveStatus.textContent = `Live counts updated ${time.toLocaleTimeString()}`;
+  liveStatus.textContent = `Live counts updated ${time.toLocaleTimeString()} | Total ${payload.total} | Busiest ${payload.busiestRoute} (${payload.busiestCount})`;
 }
 
 function getChartData() {
   const live = readLiveCounts();
-  updateLiveLabel(live);
-  return live.counts;
+  const isStale = !live.updatedAt || Date.now() - Number(live.updatedAt) > 3500;
+
+  if (!isStale) {
+    updateLiveLabel(live);
+    return live.counts;
+  }
+
+  const seedCounts = {
+    North: Number(live.counts?.North || initialCounts.North || 0),
+    East: Number(live.counts?.East || initialCounts.East || 0),
+    South: Number(live.counts?.South || initialCounts.South || 0),
+    West: Number(live.counts?.West || initialCounts.West || 0),
+  };
+
+  const routes = Object.keys(seedCounts);
+  const chosenRoute = routes[randomInt(0, routes.length - 1)];
+  seedCounts[chosenRoute] += randomInt(1, 3);
+
+  const simulated = writeLiveCounts(seedCounts);
+  updateLiveLabel(simulated);
+  return simulated.counts;
 }
 
 if (pathCtx) {

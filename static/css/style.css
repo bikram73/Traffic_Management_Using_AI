@@ -127,6 +127,10 @@ a {
     linear-gradient(180deg, rgba(10, 15, 20, 0.36), transparent 26%, rgba(10, 15, 20, 0.42));
 }
 
+.map-panel.is-video::after {
+  display: none;
+}
+
 .hero-copy,
 .busiest-banner {
   position: relative;

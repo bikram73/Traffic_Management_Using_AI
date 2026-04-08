@@ -3,7 +3,7 @@
 {% block content %}
 <section class="hero-grid">
   <article
-    class="hero-panel map-panel"
+    class="hero-panel map-panel {% if roads.activeRoad.kind == 'video' %}is-video{% endif %}"
     {% if roads.activeRoad.kind == 'image' %}
     style="background-image: linear-gradient(rgba(3, 9, 17, 0.22), rgba(3, 9, 17, 0.22)), url('{{ roads.activeRoad.source }}');"
     {% endif %}
@@ -25,6 +25,7 @@
       </div>
     </div>
 
+    {% if roads.activeRoad.kind != 'video' %}
     <div id="vehicleLayer" class="vehicle-layer" aria-label="Animated traffic layer"></div>
     <div class="signal signal-north" data-dir="north">
       <span class="light red"></span>
@@ -50,6 +51,7 @@
       <span class="light green"></span>
       <em class="timer" id="timer-west">12</em>
     </div>
+    {% endif %}
     <div class="busiest-banner">
       <span>Busy path</span>
       <strong id="busiestRoute">{{ snapshot.busiest.route }}</strong>

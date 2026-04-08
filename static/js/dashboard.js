@@ -1,6 +1,7 @@
 const roadData = window.__ROAD_DATA__ || {};
 const snapshotData = window.__TRAFFIC_SNAPSHOT__ || {};
 const layer = document.getElementById("vehicleLayer");
+const hasVehicleSimulation = Boolean(layer && Array.isArray(roadData.vehicleSprites));
 
 const flowCounts = {
   North: Number(snapshotData?.counts?.North || 0),
@@ -44,6 +45,38 @@ let latestWaiting = {
   south: 0,
   west: 0,
 };
+
+function routeFromDirection(direction) {
+  if (direction === "north") return "North";
+  if (direction === "east") return "East";
+  if (direction === "south") return "South";
+  return "West";
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function simulateWaitingQueues() {
+  for (const direction of directionOrder) {
+    const incoming = randomInt(0, 2);
+    latestWaiting[direction] = Math.min(25, Number(latestWaiting[direction] || 0) + incoming);
+  }
+
+  if (controllerState.mode === "green") {
+    const drain = randomInt(1, 4);
+    const active = controllerState.activeDirection;
+    latestWaiting[active] = Math.max(0, Number(latestWaiting[active] || 0) - drain);
+  }
+}
+
+function updateCountsFromController() {
+  if (controllerState.mode !== "green") return;
+
+  const route = routeFromDirection(controllerState.activeDirection);
+  const throughput = Math.max(1, randomInt(1, 3) + Math.floor(Number(latestWaiting[controllerState.activeDirection] || 0) / 6));
+  flowCounts[route] = Number(flowCounts[route] || 0) + throughput;
+}
 
 function setSignalState(direction, state) {
   const node = signals[direction];
@@ -217,7 +250,7 @@ function renderTrafficSnapshot() {
   }
 }
 
-if (layer && Array.isArray(roadData.vehicleSprites)) {
+if (hasVehicleSimulation) {
   const sprites = roadData.vehicleSprites;
   const lanes = [
     { cls: "lane-west-east", min: 42, max: 56 },
@@ -477,12 +510,24 @@ window.setInterval(() => {
 }, 1000);
 
 if (signals.north && signals.east && signals.south && signals.west) {
-  controllerState.activeDirection = chooseNextDirection(latestWaiting);
-  controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
-  applySignalStates();
-  updateSignalTimers();
-
-  window.setInterval(() => {
-    tickController();
-  }, 1000);
+  latestWaiting = {
+    north: Number(snapshotData?.counts?.North || 0),
+    east: Number(snapshotData?.counts?.East || 0),
+    south: Number(snapshotData?.counts?.South || 0),
+    west: Number(snapshotData?.counts?.West || 0),
+  };
 }
+
+controllerState.activeDirection = chooseNextDirection(latestWaiting);
+controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
+applySignalStates();
+updateSignalTimers();
+
+window.setInterval(() => {
+  if (!hasVehicleSimulation) {
+    simulateWaitingQueues();
+    updateCountsFromController();
+  }
+
+  tickController();
+}, 1000);

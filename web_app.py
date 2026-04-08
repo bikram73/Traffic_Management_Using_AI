@@ -31,26 +31,29 @@ TRAFFIC_CONTROLLER = {
 
 ROAD_OPTIONS = {
     "city-grid": {
-        "label": "City Grid",
+        "label": "Live City Simulation",
         "kind": "image",
         "file": "mod_int.png",
     },
     "classic-cross": {
-        "label": "Classic Crossroad",
+        "label": "Live Crossroad Simulation",
         "kind": "image",
         "file": "intersection.jpg",
     },
     "dynamic-sim": {
-        "label": "Dynamic Simulation Video",
-        "kind": "video",
-        "file": "Dynamic.mp4",
+        "label": "Live Dynamic Density",
+        "kind": "image",
+        "file": "mod_int.png",
     },
     "static-sim": {
-        "label": "Static Simulation Video",
-        "kind": "video",
-        "file": "Static.mp4",
+        "label": "Live Static Density",
+        "kind": "image",
+        "file": "intersection.jpg",
     },
 }
+
+
+DEFAULT_ROAD = "city-grid"
 
 
 VEHICLE_SPRITES = [
@@ -102,7 +105,7 @@ def traffic_snapshot() -> dict[str, object]:
 
 def road_payload(selected_key: str) -> dict[str, object]:
     if selected_key not in ROAD_OPTIONS:
-        selected_key = "city-grid"
+        selected_key = DEFAULT_ROAD
 
     options = []
     for key, road in ROAD_OPTIONS.items():
@@ -141,7 +144,7 @@ def road_payload(selected_key: str) -> dict[str, object]:
 
 @app.route("/")
 def dashboard() -> str:
-    selected_road = request.args.get("road", "city-grid")
+    selected_road = request.args.get("road", DEFAULT_ROAD)
     snapshot = traffic_snapshot()
     roads = road_payload(selected_road)
     return render_template(
