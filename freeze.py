@@ -47,6 +47,16 @@ def dashboard_road():
         yield {"road_key": road_key}
 
 
+@freezer.register_generator
+def graphs():
+    yield {}
+
+
+@freezer.register_generator
+def api_traffic():
+    yield {}
+
+
 if __name__ == "__main__":
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     freezer.freeze()

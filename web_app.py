@@ -171,7 +171,7 @@ def dashboard_road(road_key: str) -> str:
     )
 
 
-@app.route("/graphs")
+@app.route("/graphs/")
 def graphs() -> str:
     snapshot = traffic_snapshot()
     return render_template(
@@ -180,7 +180,7 @@ def graphs() -> str:
     )
 
 
-@app.route("/api/traffic")
+@app.route("/api/traffic/")
 def api_traffic() -> object:
     return jsonify(traffic_snapshot())
 

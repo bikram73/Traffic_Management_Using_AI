@@ -1,13 +1,3 @@
 [build]
   command = "pip install -r requirements-netlify.txt && python freeze.py"
   publish = "build"
-
-[[redirects]]
-  from = "/graphs"
-  to = "/graphs/index.html"
-  status = 200
-
-[[redirects]]
-  from = "/"
-  to = "/index.html"
-  status = 200
