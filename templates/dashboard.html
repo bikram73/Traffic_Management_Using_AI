@@ -20,7 +20,7 @@
       <p>Track how many vehicles are moving through each road and highlight the busiest direction in real time.</p>
       <div class="road-switcher">
         {% for road in roads.options %}
-        <a class="road-chip {% if road.active %}active{% endif %}" href="{{ url_for('dashboard', road=road.key) }}">{{ road.label }}</a>
+        <a class="road-chip {% if road.active %}active{% endif %}" href="{{ road.href }}">{{ road.label }}</a>
         {% endfor %}
       </div>
     </div>

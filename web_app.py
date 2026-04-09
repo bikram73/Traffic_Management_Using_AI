@@ -121,6 +121,7 @@ def road_payload(selected_key: str) -> dict[str, object]:
                 "kind": road["kind"],
                 "source": source,
                 "active": key == selected_key,
+                "href": url_for("dashboard_road", road_key=key),
             }
         )
 
@@ -147,6 +148,17 @@ def dashboard() -> str:
     selected_road = request.args.get("road", DEFAULT_ROAD)
     snapshot = traffic_snapshot()
     roads = road_payload(selected_road)
+    return render_template(
+        "dashboard.html",
+        snapshot=snapshot,
+        roads=roads,
+    )
+
+
+@app.route("/road/<road_key>/")
+def dashboard_road(road_key: str) -> str:
+    snapshot = traffic_snapshot()
+    roads = road_payload(road_key)
     return render_template(
         "dashboard.html",
         snapshot=snapshot,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask_frozen import Freezer
 
-from web_app import app, BASE_DIR, IMAGES_DIR, VIDEO_DIR
+from web_app import app, BASE_DIR, IMAGES_DIR, VIDEO_DIR, ROAD_OPTIONS
 
 
 BUILD_DIR = BASE_DIR / "build"
@@ -32,6 +32,19 @@ def asset_image():
 def video_asset():
     for relative_path in _iter_relative_files(VIDEO_DIR):
         yield {"filename": relative_path}
+
+
+@freezer.register_generator
+def dashboard():
+    # Freeze the default root page
+    yield {}
+
+
+@freezer.register_generator
+def dashboard_road():
+    # Freeze one page per road option so the switcher links work as static files
+    for road_key in ROAD_OPTIONS:
+        yield {"road_key": road_key}
 
 
 if __name__ == "__main__":
