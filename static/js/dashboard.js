@@ -273,7 +273,7 @@ if (hasVehicleSimulation) {
         speedSign: 1,
         resetAt: width + size,
         resetTo: -size,
-        stopLine: width * 0.42,
+        stopLine: width * 0.455,
         crossLine: width * 0.5,
       };
     }
@@ -285,7 +285,7 @@ if (hasVehicleSimulation) {
         speedSign: -1,
         resetAt: -size,
         resetTo: width + size,
-        stopLine: width * 0.58,
+        stopLine: width * 0.545,
         crossLine: width * 0.5,
       };
     }
@@ -297,7 +297,7 @@ if (hasVehicleSimulation) {
         speedSign: 1,
         resetAt: height + size,
         resetTo: -size,
-        stopLine: height * 0.42,
+        stopLine: height * 0.455,
         crossLine: height * 0.5,
       };
     }
@@ -308,7 +308,7 @@ if (hasVehicleSimulation) {
       speedSign: -1,
       resetAt: -size,
       resetTo: height + size,
-      stopLine: height * 0.58,
+      stopLine: height * 0.545,
       crossLine: height * 0.5,
     };
   }
@@ -353,28 +353,49 @@ if (hasVehicleSimulation) {
     for (let i = 0; i < vehicles.length; i++) {
       const other = vehicles[i];
       if (other === vehicle || other.laneClass !== vehicle.laneClass) continue;
-      
-      let dist;
+
+      let gap = Infinity;
       if (cfg.speedAxis === "x") {
-        dist = (other.x - vehicle.x) * cfg.speedSign;
+        if (cfg.speedSign > 0) {
+          const vehicleFront = vehicle.x + vehicle.size;
+          const otherRear = other.x;
+          gap = otherRear - vehicleFront;
+        } else {
+          const vehicleFront = vehicle.x;
+          const otherRear = other.x + other.size;
+          gap = vehicleFront - otherRear;
+        }
+      } else if (cfg.speedSign > 0) {
+        const vehicleFront = vehicle.y + vehicle.size;
+        const otherRear = other.y;
+        gap = otherRear - vehicleFront;
       } else {
-        dist = (other.y - vehicle.y) * cfg.speedSign;
+        const vehicleFront = vehicle.y;
+        const otherRear = other.y + other.size;
+        gap = vehicleFront - otherRear;
       }
-      
-      if (dist > 0 && dist < minDistance) {
-        minDistance = dist;
+
+      if (gap >= 0 && gap < minDistance) {
+        minDistance = gap;
       }
     }
     return minDistance;
   }
 
+  function frontPosition(vehicle, cfg) {
+    if (cfg.speedAxis === "x") {
+      return cfg.speedSign > 0 ? vehicle.x + vehicle.size : vehicle.x;
+    }
+    return cfg.speedSign > 0 ? vehicle.y + vehicle.size : vehicle.y;
+  }
+
   function updateVehicle(vehicle, deltaSeconds, width, height) {
     const cfg = laneConfig(vehicle.laneClass, width, height, vehicle.size);
     const canMove = isLaneGreen(vehicle.laneClass);
-    
+
     let maxAdvance = vehicle.speed * deltaSeconds;
-    const SAFE_DIST = vehicle.size + 12; // Prevents stacking and sets correct queuing spacing
-    
+    const SAFE_DIST = vehicle.size + 14;
+
     const distToAhead = getDistanceToVehicleAhead(vehicle, cfg);
     if (distToAhead < SAFE_DIST) {
       maxAdvance = 0;
@@ -383,13 +404,8 @@ if (hasVehicleSimulation) {
     }
 
     if (!vehicle.crossedStopLine && !canMove) {
-      let distToStopLine;
-      if (cfg.speedAxis === "x") {
-        distToStopLine = (cfg.stopLine - vehicle.x) * cfg.speedSign;
-      } else {
-        distToStopLine = (cfg.stopLine - vehicle.y) * cfg.speedSign;
-      }
-      
+      const distToStopLine = (cfg.stopLine - frontPosition(vehicle, cfg)) * cfg.speedSign;
+
       if (distToStopLine >= 0) {
         maxAdvance = Math.min(maxAdvance, distToStopLine);
       }
@@ -399,7 +415,8 @@ if (hasVehicleSimulation) {
 
     if (cfg.speedAxis === "x") {
       vehicle.x += advance;
-      if ((cfg.speedSign > 0 && vehicle.x >= cfg.crossLine) || (cfg.speedSign < 0 && vehicle.x <= cfg.crossLine)) {
+      const front = frontPosition(vehicle, cfg);
+      if ((cfg.speedSign > 0 && front >= cfg.crossLine) || (cfg.speedSign < 0 && front <= cfg.crossLine)) {
         vehicle.crossedStopLine = true;
         if (!vehicle.flowCounted) {
           flowCounts[routeFromLane(vehicle.laneClass)] += 1;
@@ -411,7 +428,8 @@ if (hasVehicleSimulation) {
       }
     } else {
       vehicle.y += advance;
-      if ((cfg.speedSign > 0 && vehicle.y >= cfg.crossLine) || (cfg.speedSign < 0 && vehicle.y <= cfg.crossLine)) {
+      const front = frontPosition(vehicle, cfg);
+      if ((cfg.speedSign > 0 && front >= cfg.crossLine) || (cfg.speedSign < 0 && front <= cfg.crossLine)) {
         vehicle.crossedStopLine = true;
         if (!vehicle.flowCounted) {
           flowCounts[routeFromLane(vehicle.laneClass)] += 1;

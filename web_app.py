@@ -33,27 +33,27 @@ ROAD_OPTIONS = {
     "city-grid": {
         "label": "Live City Simulation",
         "kind": "image",
-        "file": "mod_int.png",
+        "file": "modint.png",
     },
     "classic-cross": {
         "label": "Live Crossroad Simulation",
         "kind": "image",
-        "file": "intersection.jpg",
+        "file": "modint.png",
     },
     "dynamic-sim": {
         "label": "Live Dynamic Density",
-        "kind": "image",
-        "file": "mod_int.png",
+        "kind": "video",
+        "file": "Dynamic.mp4",
     },
     "static-sim": {
         "label": "Live Static Density",
-        "kind": "image",
-        "file": "intersection.jpg",
+        "kind": "video",
+        "file": "Static.mp4",
     },
 }
 
 
-DEFAULT_ROAD = "city-grid"
+DEFAULT_ROAD = "dynamic-sim"
 
 
 VEHICLE_SPRITES = [
