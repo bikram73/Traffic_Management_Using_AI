@@ -34,21 +34,25 @@ ROAD_OPTIONS = {
         "label": "Live City Simulation",
         "kind": "image",
         "file": "modint.png",
+        "signals": True,
     },
     "classic-cross": {
         "label": "Live Crossroad Simulation",
         "kind": "image",
         "file": "modint.png",
+        "signals": False,
     },
     "dynamic-sim": {
         "label": "Live Dynamic Density",
         "kind": "video",
         "file": "Dynamic.mp4",
+        "signals": False,
     },
     "static-sim": {
         "label": "Live Static Density",
         "kind": "video",
         "file": "Static.mp4",
+        "signals": False,
     },
 }
 
@@ -122,6 +126,7 @@ def road_payload(selected_key: str) -> dict[str, object]:
                 "source": source,
                 "active": key == selected_key,
                 "href": url_for("dashboard_road", road_key=key),
+                "signals": road.get("signals", False),
             }
         )
 

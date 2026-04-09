@@ -1,551 +1,393 @@
-const roadData = window.__ROAD_DATA__ || {};
-const snapshotData = window.__TRAFFIC_SNAPSHOT__ || {};
-const layer = document.getElementById("vehicleLayer");
-const hasVehicleSimulation = Boolean(layer && Array.isArray(roadData.vehicleSprites));
+// ─── Bootstrap data ───────────────────────────────────────────────────────────
+const roadData       = window.__ROAD_DATA__       || {};
+const snapshotData   = window.__TRAFFIC_SNAPSHOT__ || {};
+const layer          = document.getElementById("vehicleLayer");
+const hasVehicleSim  = Boolean(layer && Array.isArray(roadData.vehicleSprites));
 
+// ─── Live flow counts (seeded from server snapshot) ──────────────────────────
 const flowCounts = {
   North: Number(snapshotData?.counts?.North || 0),
-  East: Number(snapshotData?.counts?.East || 0),
+  East:  Number(snapshotData?.counts?.East  || 0),
   South: Number(snapshotData?.counts?.South || 0),
-  West: Number(snapshotData?.counts?.West || 0),
+  West:  Number(snapshotData?.counts?.West  || 0),
 };
 
-const signals = {
+// ─── Signal DOM refs ──────────────────────────────────────────────────────────
+const signalNodes = {
   north: document.querySelector('.signal[data-dir="north"]'),
-  east: document.querySelector('.signal[data-dir="east"]'),
+  east:  document.querySelector('.signal[data-dir="east"]'),
   south: document.querySelector('.signal[data-dir="south"]'),
-  west: document.querySelector('.signal[data-dir="west"]'),
+  west:  document.querySelector('.signal[data-dir="west"]'),
 };
-
-const signalTimers = {
+const timerNodes = {
   north: document.getElementById("timer-north"),
-  east: document.getElementById("timer-east"),
+  east:  document.getElementById("timer-east"),
   south: document.getElementById("timer-south"),
-  west: document.getElementById("timer-west"),
+  west:  document.getElementById("timer-west"),
 };
 
-const directionOrder = ["north", "east", "south", "west"];
+const DIR_ORDER = ["north", "east", "south", "west"];
 
-const controllerConfig = {
+// ─── Controller config ────────────────────────────────────────────────────────
+const ctrlCfg = {
   greenMin: Number(roadData?.controller?.greenMin || 6),
   greenMax: Number(roadData?.controller?.greenMax || 18),
-  yellow: Number(roadData?.controller?.yellow || 3),
+  yellow:   Number(roadData?.controller?.yellow   || 3),
 };
-
-const controllerState = {
-  activeDirection: "north",
-  lastDirection: "west",
-  mode: "green",
+const ctrl = {
+  active:    "north",
+  last:      "west",
+  mode:      "green",   // "green" | "yellow"
   countdown: Number(roadData?.controller?.greenMin || 6),
 };
 
-let latestWaiting = {
-  north: 0,
-  east: 0,
-  south: 0,
-  west: 0,
-};
+let latestWaiting = { north: 0, east: 0, south: 0, west: 0 };
 
-function routeFromDirection(direction) {
-  if (direction === "north") return "North";
-  if (direction === "east") return "East";
-  if (direction === "south") return "South";
-  return "West";
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function dirToRoute(d) {
+  return d === "north" ? "North" : d === "east" ? "East" : d === "south" ? "South" : "West";
 }
-
-function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function laneToDir(cls) {
+  return cls === "lane-west-east" ? "west"
+       : cls === "lane-east-west" ? "east"
+       : cls === "lane-north-south" ? "north"
+       : "south";
 }
-
-function simulateWaitingQueues() {
-  for (const direction of directionOrder) {
-    const incoming = randomInt(0, 2);
-    latestWaiting[direction] = Math.min(25, Number(latestWaiting[direction] || 0) + incoming);
-  }
-
-  if (controllerState.mode === "green") {
-    const drain = randomInt(1, 4);
-    const active = controllerState.activeDirection;
-    latestWaiting[active] = Math.max(0, Number(latestWaiting[active] || 0) - drain);
-  }
+function laneToRoute(cls) {
+  return cls === "lane-west-east" ? "West"
+       : cls === "lane-east-west" ? "East"
+       : cls === "lane-north-south" ? "North"
+       : "South";
 }
-
-function updateCountsFromController() {
-  if (controllerState.mode !== "green") return;
-
-  const route = routeFromDirection(controllerState.activeDirection);
-  const throughput = Math.max(1, randomInt(1, 3) + Math.floor(Number(latestWaiting[controllerState.activeDirection] || 0) / 6));
-  flowCounts[route] = Number(flowCounts[route] || 0) + throughput;
+function isGreen(cls) {
+  return ctrl.mode === "green" && laneToDir(cls) === ctrl.active;
 }
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
 
-function setSignalState(direction, state) {
-  const node = signals[direction];
-  if (!node) return;
-  node.classList.remove("state-red", "state-yellow", "state-green");
-  node.classList.add(`state-${state}`);
+// ─── Signal controller ────────────────────────────────────────────────────────
+function setSignal(dir, state) {
+  const n = signalNodes[dir];
+  if (!n) return;
+  n.classList.remove("state-red", "state-yellow", "state-green");
+  n.classList.add(`state-${state}`);
 }
-
-function laneDirection(laneClass) {
-  if (laneClass === "lane-west-east") return "west";
-  if (laneClass === "lane-east-west") return "east";
-  if (laneClass === "lane-north-south") return "north";
-  return "south";
+function applySignals() {
+  DIR_ORDER.forEach(d => setSignal(d, "red"));
+  setSignal(ctrl.active, ctrl.mode === "green" ? "green" : "yellow");
 }
-
-function chooseNextDirection(waiting) {
-  let maxQueue = -1;
-  let candidates = [];
-
-  for (const direction of directionOrder) {
-    const queue = Number(waiting[direction] || 0);
-    if (queue > maxQueue) {
-      maxQueue = queue;
-      candidates = [direction];
-    } else if (queue === maxQueue) {
-      candidates.push(direction);
-    }
+function updateTimers() {
+  DIR_ORDER.forEach(d => {
+    const n = timerNodes[d];
+    if (!n) return;
+    if (d === ctrl.active) { n.textContent = ctrl.countdown; n.style.opacity = "1"; }
+    else                   { n.textContent = latestWaiting[d]; n.style.opacity = "0.55"; }
+  });
+}
+function chooseNext(waiting) {
+  let max = -1, candidates = [];
+  for (const d of DIR_ORDER) {
+    const q = waiting[d] || 0;
+    if (q > max)      { max = q; candidates = [d]; }
+    else if (q === max) candidates.push(d);
   }
-
-  if (maxQueue <= 0) {
-    const currentIndex = directionOrder.indexOf(controllerState.lastDirection);
-    return directionOrder[(currentIndex + 1) % directionOrder.length];
+  if (max <= 0) {
+    return DIR_ORDER[(DIR_ORDER.indexOf(ctrl.last) + 1) % DIR_ORDER.length];
   }
-
-  if (candidates.length === 1) {
-    return candidates[0];
+  if (candidates.length === 1) return candidates[0];
+  const si = DIR_ORDER.indexOf(ctrl.last);
+  for (let i = 1; i <= DIR_ORDER.length; i++) {
+    const c = DIR_ORDER[(si + i) % DIR_ORDER.length];
+    if (candidates.includes(c)) return c;
   }
-
-  const startIdx = directionOrder.indexOf(controllerState.lastDirection);
-  for (let i = 1; i <= directionOrder.length; i += 1) {
-    const candidate = directionOrder[(startIdx + i) % directionOrder.length];
-    if (candidates.includes(candidate)) {
-      return candidate;
-    }
-  }
-
   return candidates[0];
 }
-
-function computeGreenTime(direction, waiting) {
-  const queue = Number(waiting[direction] || 0);
-  const dynamic = controllerConfig.greenMin + queue;
-  return Math.max(controllerConfig.greenMin, Math.min(controllerConfig.greenMax, dynamic));
+function greenTime(dir, waiting) {
+  return Math.max(ctrlCfg.greenMin, Math.min(ctrlCfg.greenMax, ctrlCfg.greenMin + (waiting[dir] || 0)));
 }
-
-function applySignalStates() {
-  for (const direction of directionOrder) {
-    setSignalState(direction, "red");
-  }
-
-  if (controllerState.mode === "green") {
-    setSignalState(controllerState.activeDirection, "green");
-  } else {
-    setSignalState(controllerState.activeDirection, "yellow");
-  }
-}
-
-function updateSignalTimers() {
-  Object.entries(signalTimers).forEach(([direction, node]) => {
-    if (!node) return;
-    if (direction === controllerState.activeDirection) {
-      node.textContent = String(controllerState.countdown);
-      node.style.opacity = "1";
-      return;
-    }
-
-    node.textContent = String(Number(latestWaiting[direction] || 0));
-    node.style.opacity = "0.55";
-  });
-}
-
 function tickController() {
-  controllerState.countdown -= 1;
-
-  if (controllerState.countdown >= 0) {
-    updateSignalTimers();
-    return;
-  }
-
-  if (controllerState.mode === "green") {
-    controllerState.mode = "yellow";
-    controllerState.countdown = controllerConfig.yellow;
+  ctrl.countdown--;
+  if (ctrl.countdown >= 0) { updateTimers(); return; }
+  if (ctrl.mode === "green") {
+    ctrl.mode = "yellow";
+    ctrl.countdown = ctrlCfg.yellow;
   } else {
-    controllerState.lastDirection = controllerState.activeDirection;
-    controllerState.activeDirection = chooseNextDirection(latestWaiting);
-    controllerState.mode = "green";
-    controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
+    ctrl.last   = ctrl.active;
+    ctrl.active = chooseNext(latestWaiting);
+    ctrl.mode   = "green";
+    ctrl.countdown = greenTime(ctrl.active, latestWaiting);
   }
-
-  applySignalStates();
-  updateSignalTimers();
+  applySignals();
+  updateTimers();
 }
 
-function isLaneGreen(laneClass) {
-  return controllerState.mode === "green" && laneDirection(laneClass) === controllerState.activeDirection;
-}
-
-function routeFromLane(laneClass) {
-  if (laneClass === "lane-west-east") return "West";
-  if (laneClass === "lane-east-west") return "East";
-  if (laneClass === "lane-north-south") return "North";
-  return "South";
-}
-
-function renderTrafficSnapshot() {
+// ─── Stats panel ──────────────────────────────────────────────────────────────
+function renderSnapshot() {
   const cards = document.querySelectorAll(".stat-card[data-route]");
-  const total = Object.values(flowCounts).reduce((sum, value) => sum + value, 0);
+  const total = Object.values(flowCounts).reduce((s, v) => s + v, 0);
+  let busiestRoute = "North", busiestCount = -1;
 
-  let busiestRoute = "North";
-  let busiestCount = -1;
-
-  cards.forEach((card) => {
+  cards.forEach(card => {
     const route = card.getAttribute("data-route");
-    const routeCount = Number(flowCounts[route] || 0);
-    const countNode = card.querySelector(".route-count");
-    const meterFill = card.querySelector(".meter-fill");
-    const meterPercent = total > 0 ? (routeCount / total) * 100 : 0;
-
-    if (countNode) countNode.textContent = String(routeCount);
-    if (meterFill) meterFill.style.width = `${meterPercent.toFixed(0)}%`;
-
+    const count = flowCounts[route] || 0;
+    const pct   = total > 0 ? (count / total * 100).toFixed(0) : 0;
+    const cn = card.querySelector(".route-count");
+    const mf = card.querySelector(".meter-fill");
+    if (cn) cn.textContent = count;
+    if (mf) mf.style.width = `${pct}%`;
     card.classList.remove("active");
-    if (routeCount > busiestCount) {
-      busiestCount = routeCount;
-      busiestRoute = route;
-    }
+    if (count > busiestCount) { busiestCount = count; busiestRoute = route; }
+  });
+  cards.forEach(card => {
+    if (card.getAttribute("data-route") === busiestRoute) card.classList.add("active");
   });
 
-  cards.forEach((card) => {
-    if (card.getAttribute("data-route") === busiestRoute) {
-      card.classList.add("active");
-    }
-  });
-
-  const totalNode = document.getElementById("totalVehicles");
-  if (totalNode) totalNode.textContent = String(total);
-
-  const busiestRouteNode = document.getElementById("busiestRoute");
-  const busiestCountNode = document.getElementById("busiestCount");
-  const insightRouteNode = document.getElementById("insightBusiestRoute");
-  const insightCountNode = document.getElementById("insightBusiestCount");
-
-  if (busiestRouteNode) busiestRouteNode.textContent = busiestRoute;
-  if (busiestCountNode) busiestCountNode.textContent = `${busiestCount} vehicles`;
-  if (insightRouteNode) insightRouteNode.textContent = busiestRoute;
-  if (insightCountNode) insightCountNode.textContent = String(busiestCount);
+  const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
+  set("totalVehicles",       total);
+  set("busiestRoute",        busiestRoute);
+  set("busiestCount",        `${busiestCount} vehicles`);
+  set("insightBusiestRoute", busiestRoute);
+  set("insightBusiestCount", busiestCount);
 
   try {
-    window.localStorage.setItem(
-      "traffic-live-counts",
-      JSON.stringify({
-        counts: flowCounts,
-        total,
-        busiestRoute,
-        busiestCount,
-        updatedAt: Date.now(),
-      }),
-    );
-  } catch (error) {
-    void error;
-  }
+    localStorage.setItem("traffic-live-counts", JSON.stringify(
+      { counts: flowCounts, total, busiestRoute, busiestCount, updatedAt: Date.now() }
+    ));
+  } catch (_) {}
 }
 
-if (hasVehicleSimulation) {
+// ─── Vehicle simulation ───────────────────────────────────────────────────────
+if (hasVehicleSim) {
   const sprites = roadData.vehicleSprites;
-  const lanes = [
-    { cls: "lane-west-east", min: 42, max: 56 },
-    { cls: "lane-east-west", min: 42, max: 56 },
-    { cls: "lane-north-south", min: 42, max: 56 },
-    { cls: "lane-south-north", min: 42, max: 56 },
-  ];
 
-  const vehicleCount = 28;
-  const vehicles = [];
+  // Constants
+  const V_SIZE      = 26;   // vehicle square size in px
+  const MIN_GAP     = 14;   // minimum bumper-to-bumper gap
+  const SAFE_GAP    = V_SIZE + MIN_GAP;
+  const PER_LANE    = 6;    // vehicles per lane
+  const SPEED_MIN   = 45;
+  const SPEED_MAX   = 60;
 
-  function laneConfig(laneClass, width, height, size) {
-    const horizontalOffset = 18;
-    const verticalOffset = 18;
-    if (laneClass === "lane-west-east") {
-      return {
-        x: -size,
-        y: height * 0.5 - horizontalOffset,
-        speedAxis: "x",
-        speedSign: 1,
-        resetAt: width + size,
-        resetTo: -size,
-        stopLine: width * 0.455,
-        crossLine: width * 0.5,
-      };
+  // Lane definitions — each lane is one direction of travel on one road arm.
+  // fixedCoord: the perpendicular coordinate (stays constant while moving).
+  // Offset from centre keeps opposing lanes from overlapping.
+  function laneGeo(cls, W, H) {
+    const ho = 17, vo = 17;   // lane offset from panel centre
+    switch (cls) {
+      case "lane-west-east":   return { axis:"x", sign: 1, fixed: H*0.5 - ho, stop: W*0.44, cross: W*0.5, entry: -V_SIZE,    exit: W + V_SIZE   };
+      case "lane-east-west":   return { axis:"x", sign:-1, fixed: H*0.5 + ho, stop: W*0.56, cross: W*0.5, entry: W + V_SIZE, exit: -V_SIZE      };
+      case "lane-north-south": return { axis:"y", sign: 1, fixed: W*0.5 + vo, stop: H*0.44, cross: H*0.5, entry: -V_SIZE,    exit: H + V_SIZE   };
+      default:/* south-north */return { axis:"y", sign:-1, fixed: W*0.5 - vo, stop: H*0.56, cross: H*0.5, entry: H + V_SIZE, exit: -V_SIZE      };
     }
-    if (laneClass === "lane-east-west") {
-      return {
-        x: width + size,
-        y: height * 0.5 + horizontalOffset,
-        speedAxis: "x",
-        speedSign: -1,
-        resetAt: -size,
-        resetTo: width + size,
-        stopLine: width * 0.545,
-        crossLine: width * 0.5,
-      };
-    }
-    if (laneClass === "lane-north-south") {
-      return {
-        x: width * 0.5 + verticalOffset,
-        y: -size,
-        speedAxis: "y",
-        speedSign: 1,
-        resetAt: height + size,
-        resetTo: -size,
-        stopLine: height * 0.455,
-        crossLine: height * 0.5,
-      };
-    }
-    return {
-      x: width * 0.5 - verticalOffset,
-      y: height + size,
-      speedAxis: "y",
-      speedSign: -1,
-      resetAt: -size,
-      resetTo: height + size,
-      stopLine: height * 0.545,
-      crossLine: height * 0.5,
-    };
   }
 
-  function randomSpeedPxPerSecond(lane) {
-    return lane.min + Math.random() * (lane.max - lane.min);
+  // Front edge of vehicle in direction of travel
+  function front(v, g) {
+    const pos = g.axis === "x" ? v.x : v.y;
+    return g.sign > 0 ? pos + V_SIZE : pos;
+  }
+  // Rear edge of vehicle
+  function rear(v, g) {
+    const pos = g.axis === "x" ? v.x : v.y;
+    return g.sign > 0 ? pos : pos + V_SIZE;
   }
 
-  function resetVehiclePosition(vehicle, width, height) {
-    const cfg = laneConfig(vehicle.laneClass, width, height, vehicle.size);
-    vehicle.x = cfg.x;
-    vehicle.y = cfg.y;
-    vehicle.crossedStopLine = false;
-    vehicle.flowCounted = false;
+  // Gap from this vehicle's front to the nearest vehicle-ahead's rear (same lane)
+  function gapAhead(v, g, laneVehicles) {
+    let best = Infinity;
+    for (const o of laneVehicles) {
+      if (o === v) continue;
+      const gap = (rear(o, g) - front(v, g)) * g.sign;
+      if (gap > -2 && gap < best) best = gap;
+    }
+    return best;
   }
 
-  function computeWaitingCounts(width, height) {
-    const waiting = { north: 0, east: 0, south: 0, west: 0 };
-
-    for (const vehicle of vehicles) {
-      if (vehicle.crossedStopLine) continue;
-      const cfg = laneConfig(vehicle.laneClass, width, height, vehicle.size);
-      const dir = laneDirection(vehicle.laneClass);
-
-      let distanceToStopLine;
-      if (cfg.speedAxis === "x") {
-        distanceToStopLine = (cfg.stopLine - vehicle.x) * cfg.speedSign;
-      } else {
-        distanceToStopLine = (cfg.stopLine - vehicle.y) * cfg.speedSign;
-      }
-
-      if (distanceToStopLine >= -2) {
-        waiting[dir] += 1;
-      }
-    }
-
-    return waiting;
-  }
-
-  function getDistanceToVehicleAhead(vehicle, cfg) {
-    let minDistance = Infinity;
-    for (let i = 0; i < vehicles.length; i++) {
-      const other = vehicles[i];
-      if (other === vehicle || other.laneClass !== vehicle.laneClass) continue;
-
-      let gap = Infinity;
-      if (cfg.speedAxis === "x") {
-        if (cfg.speedSign > 0) {
-          const vehicleFront = vehicle.x + vehicle.size;
-          const otherRear = other.x;
-          gap = otherRear - vehicleFront;
-        } else {
-          const vehicleFront = vehicle.x;
-          const otherRear = other.x + other.size;
-          gap = vehicleFront - otherRear;
-        }
-      } else if (cfg.speedSign > 0) {
-        const vehicleFront = vehicle.y + vehicle.size;
-        const otherRear = other.y;
-        gap = otherRear - vehicleFront;
-      } else {
-        const vehicleFront = vehicle.y;
-        const otherRear = other.y + other.size;
-        gap = vehicleFront - otherRear;
-      }
-
-      if (gap >= 0 && gap < minDistance) {
-        minDistance = gap;
-      }
-    }
-    return minDistance;
-  }
-
-  function frontPosition(vehicle, cfg) {
-    if (cfg.speedAxis === "x") {
-      return cfg.speedSign > 0 ? vehicle.x + vehicle.size : vehicle.x;
-    }
-    return cfg.speedSign > 0 ? vehicle.y + vehicle.size : vehicle.y;
-  }
-
-  function updateVehicle(vehicle, deltaSeconds, width, height) {
-    const cfg = laneConfig(vehicle.laneClass, width, height, vehicle.size);
-    const canMove = isLaneGreen(vehicle.laneClass);
-
-    let maxAdvance = vehicle.speed * deltaSeconds;
-    const SAFE_DIST = vehicle.size + 14;
-
-    const distToAhead = getDistanceToVehicleAhead(vehicle, cfg);
-    if (distToAhead < SAFE_DIST) {
-      maxAdvance = 0;
-    } else {
-      maxAdvance = Math.min(maxAdvance, distToAhead - SAFE_DIST);
-    }
-
-    if (!vehicle.crossedStopLine && !canMove) {
-      const distToStopLine = (cfg.stopLine - frontPosition(vehicle, cfg)) * cfg.speedSign;
-
-      if (distToStopLine >= 0) {
-        maxAdvance = Math.min(maxAdvance, distToStopLine);
-      }
-    }
-
-    const advance = maxAdvance * cfg.speedSign;
-
-    if (cfg.speedAxis === "x") {
-      vehicle.x += advance;
-      const front = frontPosition(vehicle, cfg);
-      if ((cfg.speedSign > 0 && front >= cfg.crossLine) || (cfg.speedSign < 0 && front <= cfg.crossLine)) {
-        vehicle.crossedStopLine = true;
-        if (!vehicle.flowCounted) {
-          flowCounts[routeFromLane(vehicle.laneClass)] += 1;
-          vehicle.flowCounted = true;
-        }
-      }
-      if ((cfg.speedSign > 0 && vehicle.x > cfg.resetAt) || (cfg.speedSign < 0 && vehicle.x < cfg.resetAt)) {
-        resetVehiclePosition(vehicle, width, height);
-      }
-    } else {
-      vehicle.y += advance;
-      const front = frontPosition(vehicle, cfg);
-      if ((cfg.speedSign > 0 && front >= cfg.crossLine) || (cfg.speedSign < 0 && front <= cfg.crossLine)) {
-        vehicle.crossedStopLine = true;
-        if (!vehicle.flowCounted) {
-          flowCounts[routeFromLane(vehicle.laneClass)] += 1;
-          vehicle.flowCounted = true;
-        }
-      }
-      if ((cfg.speedSign > 0 && vehicle.y > cfg.resetAt) || (cfg.speedSign < 0 && vehicle.y < cfg.resetAt)) {
-        resetVehiclePosition(vehicle, width, height);
-      }
-    }
-
-    vehicle.node.style.left = `${vehicle.x}px`;
-    vehicle.node.style.top = `${vehicle.y}px`;
-  }
-
-  const laneCounts = {
-    "lane-west-east": 0,
-    "lane-east-west": 0,
-    "lane-north-south": 0,
-    "lane-south-north": 0,
+  // Group vehicles by lane for O(lane-size) gap checks
+  const laneGroups = {
+    "lane-west-east":   [],
+    "lane-east-west":   [],
+    "lane-north-south": [],
+    "lane-south-north": [],
   };
+  const allVehicles = [];
 
-  for (let i = 0; i < vehicleCount; i += 1) {
-    const sprite = sprites[Math.floor(Math.random() * sprites.length)];
-    const lane = lanes[i % lanes.length];
+  function spawnVehicle(v, g, laneVehicles) {
+    // Place behind the rearmost vehicle in the lane, or at entry if lane is empty
+    let rearmostRear = g.entry;
+    for (const o of laneVehicles) {
+      if (o === v) continue;
+      const r = rear(o, g);
+      if (g.sign > 0 ? r < rearmostRear : r > rearmostRear) rearmostRear = r;
+    }
+    const spawnPos = g.sign > 0
+      ? Math.min(rearmostRear - SAFE_GAP, g.entry)
+      : Math.max(rearmostRear + SAFE_GAP, g.entry);
 
-    const vehicle = document.createElement("img");
-    vehicle.src = sprite.image;
-    vehicle.alt = sprite.type;
-    vehicle.className = `vehicle ${lane.cls}`;
-    
-    // Aesthetic improvements
-    vehicle.style.position = "absolute";
-    vehicle.style.filter = "drop-shadow(2px 4px 6px rgba(0,0,0,0.4))";
-    vehicle.style.zIndex = "10";
-    
-    const size = 30; // Slightly larger for better visibility
-    const width = layer.clientWidth;
-    const height = layer.clientHeight;
-    const cfg = laneConfig(lane.cls, width, height, size);
-    
-    // Arrange vehicles properly behind the stopline queue instead of a random overlap
-    const laneCount = laneCounts[lane.cls]++;
-    const SAFE_SPACING = size + 15;
-    
-    let initialPos;
-    if (cfg.speedSign > 0) {
-      initialPos = cfg.stopLine - SAFE_SPACING * 0.2 - laneCount * SAFE_SPACING;
+    if (g.axis === "x") { v.x = spawnPos; v.y = g.fixed; }
+    else                { v.y = spawnPos; v.x = g.fixed; }
+    v.crossed    = false;
+    v.counted    = false;
+  }
+
+  function moveVehicle(v, dt, W, H) {
+    const g  = laneGeo(v.cls, W, H);
+    const lv = laneGroups[v.cls];
+    let advance = v.speed * dt;
+
+    // Rule 1 — safe following distance
+    const gap = gapAhead(v, g, lv);
+    if (gap <= SAFE_GAP) {
+      advance = 0;
     } else {
-      initialPos = cfg.stopLine + SAFE_SPACING * 0.2 + laneCount * SAFE_SPACING;
+      advance = Math.min(advance, gap - SAFE_GAP);
     }
 
-    const model = {
-      node: vehicle,
-      laneClass: lane.cls,
-      speed: randomSpeedPxPerSecond(lane),
-      size,
-      x: cfg.speedAxis === "x" ? initialPos : cfg.x,
-      y: cfg.speedAxis === "y" ? initialPos : cfg.y,
-      crossedStopLine: false,
-      flowCounted: false,
-    };
-
-    vehicle.style.width = `${size}px`;
-    vehicle.style.left = `${model.x}px`;
-    vehicle.style.top = `${model.y}px`;
-
-    layer.appendChild(vehicle);
-    vehicles.push(model);
-  }
-
-  let lastTick = performance.now();
-
-  function animate(now) {
-    const deltaSeconds = Math.min((now - lastTick) / 1000, 0.06);
-    lastTick = now;
-
-    const width = layer.clientWidth;
-    const height = layer.clientHeight;
-    for (const vehicle of vehicles) {
-      updateVehicle(vehicle, deltaSeconds, width, height);
+    // Rule 2 — stop at stop-line when signal is red/yellow
+    if (!v.crossed && !isGreen(v.cls)) {
+      const distToStop = (g.stop - front(v, g)) * g.sign;
+      if (distToStop >= 0) {
+        advance = Math.min(advance, distToStop);
+      } else {
+        // Already past stop line on red — freeze (shouldn't normally happen)
+        advance = 0;
+      }
     }
 
-    latestWaiting = computeWaitingCounts(width, height);
+    // Apply
+    if (g.axis === "x") v.x += advance * g.sign;
+    else                v.y += advance * g.sign;
 
-    window.requestAnimationFrame(animate);
+    // Cross line — count throughput
+    const f = front(v, g);
+    if (!v.crossed && (g.sign > 0 ? f >= g.cross : f <= g.cross)) {
+      v.crossed = true;
+      if (!v.counted) {
+        flowCounts[laneToRoute(v.cls)] += 1;
+        v.counted = true;
+      }
+    }
+
+    // Exit — respawn at back of queue
+    const exited = g.sign > 0
+      ? (g.axis === "x" ? v.x > g.exit : v.y > g.exit)
+      : (g.axis === "x" ? v.x < g.exit : v.y < g.exit);
+    if (exited) spawnVehicle(v, g, lv);
+
+    v.node.style.left = `${v.x}px`;
+    v.node.style.top  = `${v.y}px`;
   }
 
-  window.requestAnimationFrame(animate);
+  function countWaiting(W, H) {
+    const w = { north:0, east:0, south:0, west:0 };
+    for (const v of allVehicles) {
+      if (v.crossed) continue;
+      const g = laneGeo(v.cls, W, H);
+      const distToStop = (g.stop - front(v, g)) * g.sign;
+      if (distToStop >= -2) w[laneToDir(v.cls)]++;
+    }
+    return w;
+  }
+
+  // Build all vehicle DOM nodes and initial positions after layout is ready
+  function buildVehicles() {
+    const W = layer.clientWidth  || 600;
+    const H = layer.clientHeight || 400;
+
+    const laneClasses = Object.keys(laneGroups);
+
+    for (const cls of laneClasses) {
+      const g = laneGeo(cls, W, H);
+
+      for (let i = 0; i < PER_LANE; i++) {
+        const sprite = sprites[Math.floor(Math.random() * sprites.length)];
+
+        const img = document.createElement("img");
+        img.src       = sprite.image;
+        img.alt       = sprite.type;
+        img.className = `vehicle ${cls}`;
+        img.style.cssText = `
+          position:absolute;
+          width:${V_SIZE}px;
+          height:${V_SIZE}px;
+          object-fit:contain;
+          z-index:10;
+          pointer-events:none;
+        `;
+
+        // Queue vehicles behind the stop line, evenly spaced, no overlaps.
+        // Vehicle 0 is closest to the stop line; higher index = further back.
+        const mainCoord = g.sign > 0
+          ? g.stop - SAFE_GAP * 0.5 - i * SAFE_GAP
+          : g.stop + SAFE_GAP * 0.5 + i * SAFE_GAP;
+
+        const vx = g.axis === "x" ? mainCoord : g.fixed;
+        const vy = g.axis === "y" ? mainCoord : g.fixed;
+
+        const v = {
+          node:    img,
+          cls,
+          speed:   SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN),
+          x:       vx,
+          y:       vy,
+          crossed: false,
+          counted: false,
+        };
+
+        img.style.left = `${vx}px`;
+        img.style.top  = `${vy}px`;
+
+        layer.appendChild(img);
+        laneGroups[cls].push(v);
+        allVehicles.push(v);
+      }
+    }
+  }
+
+  // Start animation loop
+  setTimeout(() => {
+    buildVehicles();
+
+    let last = performance.now();
+    function animate(now) {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      const W = layer.clientWidth  || 600;
+      const H = layer.clientHeight || 400;
+      for (const v of allVehicles) moveVehicle(v, dt, W, H);
+      latestWaiting = countWaiting(W, H);
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  }, 120);   // wait for CSS layout to settle
 }
 
-renderTrafficSnapshot();
+// ─── Periodic updates ─────────────────────────────────────────────────────────
+renderSnapshot();
+setInterval(renderSnapshot, 1000);
 
-window.setInterval(() => {
-  renderTrafficSnapshot();
-}, 1000);
+// Seed initial signal state
+latestWaiting = {
+  north: Number(snapshotData?.counts?.North || 0),
+  east:  Number(snapshotData?.counts?.East  || 0),
+  south: Number(snapshotData?.counts?.South || 0),
+  west:  Number(snapshotData?.counts?.West  || 0),
+};
+ctrl.active    = chooseNext(latestWaiting);
+ctrl.countdown = greenTime(ctrl.active, latestWaiting);
+applySignals();
+updateTimers();
 
-if (signals.north && signals.east && signals.south && signals.west) {
-  latestWaiting = {
-    north: Number(snapshotData?.counts?.North || 0),
-    east: Number(snapshotData?.counts?.East || 0),
-    south: Number(snapshotData?.counts?.South || 0),
-    west: Number(snapshotData?.counts?.West || 0),
-  };
-}
-
-controllerState.activeDirection = chooseNextDirection(latestWaiting);
-controllerState.countdown = computeGreenTime(controllerState.activeDirection, latestWaiting);
-applySignalStates();
-updateSignalTimers();
-
-window.setInterval(() => {
-  if (!hasVehicleSimulation) {
-    simulateWaitingQueues();
-    updateCountsFromController();
+setInterval(() => {
+  if (!hasVehicleSim) {
+    // No vehicle layer — simulate queue changes for stats panel
+    DIR_ORDER.forEach(d => {
+      latestWaiting[d] = Math.min(25, (latestWaiting[d] || 0) + randInt(0, 2));
+    });
+    if (ctrl.mode === "green") {
+      const r = dirToRoute(ctrl.active);
+      flowCounts[r] += Math.max(1, randInt(1, 3) + Math.floor((latestWaiting[ctrl.active] || 0) / 6));
+      latestWaiting[ctrl.active] = Math.max(0, (latestWaiting[ctrl.active] || 0) - randInt(1, 4));
+    }
   }
-
   tickController();
 }, 1000);

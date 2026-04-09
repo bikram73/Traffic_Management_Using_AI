@@ -27,6 +27,7 @@
 
     {% if roads.activeRoad.kind != 'video' %}
     <div id="vehicleLayer" class="vehicle-layer" aria-label="Animated traffic layer"></div>
+    {% if roads.activeRoad.signals %}
     <div class="signal signal-north" data-dir="north">
       <span class="light red"></span>
       <span class="light yellow"></span>
@@ -51,6 +52,7 @@
       <span class="light green"></span>
       <em class="timer" id="timer-west">12</em>
     </div>
+    {% endif %}
     {% endif %}
     <div class="busiest-banner">
       <span>Busy path</span>
