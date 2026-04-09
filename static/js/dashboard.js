@@ -347,6 +347,37 @@ if (hasVehicleSim) {
   setTimeout(() => {
     buildVehicles();
 
+    let lastW = layer.clientWidth  || 600;
+    let lastH = layer.clientHeight || 400;
+
+    // When the panel resizes (fullscreen toggle, window resize),
+    // rescale every vehicle's position proportionally so they stay
+    // on the correct lane relative to the new dimensions.
+    function rescaleVehicles(newW, newH) {
+      if (!lastW || !lastH) return;
+      const sx = newW / lastW;
+      const sy = newH / lastH;
+      for (const v of allVehicles) {
+        v.x *= sx;
+        v.y *= sy;
+        v.node.style.left = `${v.x}px`;
+        v.node.style.top  = `${v.y}px`;
+      }
+      lastW = newW;
+      lastH = newH;
+    }
+
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const newW = entry.contentRect.width;
+        const newH = entry.contentRect.height;
+        if (Math.abs(newW - lastW) > 2 || Math.abs(newH - lastH) > 2) {
+          rescaleVehicles(newW, newH);
+        }
+      }
+    });
+    ro.observe(layer);
+
     let last = performance.now();
     function animate(now) {
       const dt = Math.min((now - last) / 1000, 0.05);

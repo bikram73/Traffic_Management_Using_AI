@@ -140,6 +140,53 @@ a { color: inherit; text-decoration: none; }
   pointer-events: none;
 }
 
+/* ── Fullscreen button ──────────────────────────────────────────────────────── */
+.fullscreen-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(10,12,16,0.72);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(114,213,114,0.18);
+  border-color: rgba(114,213,114,0.6);
+}
+
+.fullscreen-btn svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* show expand icon by default, compress icon when fullscreen */
+.fullscreen-btn .icon-compress { display: none; }
+.map-panel.is-fullscreen .fullscreen-btn .icon-expand   { display: none; }
+.map-panel.is-fullscreen .fullscreen-btn .icon-compress { display: block; }
+
+/* fullscreen panel styles */
+.map-panel.is-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 999 !important;
+  border-radius: 0 !important;
+  min-height: 100dvh !important;
+  width: 100vw !important;
+}
+
 /* ── Signals ────────────────────────────────────────────────────────────────── */
 .signal {
   position: absolute;
